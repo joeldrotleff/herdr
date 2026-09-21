@@ -2188,6 +2188,7 @@ fn navigator_machine_selection_opens_its_remembered_view() {
 fn navigator_foreign_pane_selection_activates_its_endpoint() {
     let (mut state, endpoint_id) = state_with_remote();
     state.open_navigator_overlay();
+    state.expand_all_navigator_workspaces();
     let selected = {
         let ClientShellOverlay::Navigator(navigator) = state.overlay.as_ref().expect("navigator")
         else {
@@ -2322,6 +2323,7 @@ fn cached_offline_navigator_and_mobile_targets_are_dimmed_and_disabled() {
     state.set_endpoint_status(&endpoint_id, ClientEndpointStatus::Reconnecting);
 
     state.open_navigator_overlay();
+    state.expand_all_navigator_workspaces();
     let selected = {
         let ClientShellOverlay::Navigator(navigator) = state.overlay.as_ref().expect("navigator")
         else {
@@ -2493,6 +2495,7 @@ fn collapsed_aggregate_workspace_status_uses_its_status_color() {
 fn navigator_workspace_arrows_cross_machine_headings_without_activating_them() {
     let (mut state, endpoint_id) = state_with_remote();
     state.open_navigator_overlay();
+    state.expand_all_navigator_workspaces();
     for (key, expected_endpoint) in [
         (KeyCode::Right, endpoint_id),
         (KeyCode::Left, ClientEndpointId::Local),
@@ -2518,6 +2521,7 @@ fn navigator_workspace_arrows_cross_machine_headings_without_activating_them() {
 fn navigator_foreign_workspace_heading_keeps_the_workspace_target() {
     let (mut state, endpoint_id) = state_with_remote();
     state.open_navigator_overlay();
+    state.expand_all_navigator_workspaces();
     let selected = {
         let ClientShellOverlay::Navigator(navigator) = state.overlay.as_ref().expect("navigator")
         else {
