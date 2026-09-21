@@ -1013,7 +1013,6 @@ fn navigator_renders_every_terminal_in_workspace_sections() {
     state.set_snapshot(Box::new(snapshot));
     state.set_pane_surface(surface());
     state.open_navigator_overlay();
-    state.expand_all_navigator_workspaces();
     let visible_rows = |state: &mut ClientShellState, height| {
         let frame = state.compose(106, height).expect("navigator frame");
         state
@@ -1277,7 +1276,7 @@ fn navigator_keeps_empty_workspaces_searchable_without_status_filters() {
 }
 
 #[test]
-fn navigator_starts_collapsed_and_honors_counts_and_h_l() {
+fn navigator_honors_counts_and_h_l_collapse() {
     let mut projected = snapshot();
     let mut last = projected.workspaces[0].clone();
     last.workspace_id = "ws_last".into();
@@ -1327,28 +1326,29 @@ fn navigator_starts_collapsed_and_honors_counts_and_h_l() {
         })
     };
 
-    // Only the focused workspace opens expanded: from its pane, one step
-    // down lands on the collapsed workspace row, not on its hidden panes.
+    // Everything starts expanded: rows are ws_1, pane_1, ws_last, pane_a, pane_b.
     assert_eq!(selected(&state), pane("pane_1"));
     press(&mut state, KeyCode::Char('j'));
     assert_eq!(selected(&state), workspace("ws_last"));
-
-    // l expands in place, h from a pane collapses back to the workspace row.
-    press(&mut state, KeyCode::Char('l'));
     press(&mut state, KeyCode::Char('j'));
     assert_eq!(selected(&state), pane("pane_a"));
+
+    // h from a pane collapses its workspace and selects its row; l reopens.
     press(&mut state, KeyCode::Char('h'));
     assert_eq!(selected(&state), workspace("ws_last"));
     press(&mut state, KeyCode::Char('j'));
     assert_eq!(selected(&state), workspace("ws_last"));
+    press(&mut state, KeyCode::Char('l'));
+    press(&mut state, KeyCode::Char('j'));
+    assert_eq!(selected(&state), pane("pane_a"));
 
-    // Counts: 2k climbs both rows above; 2d moves down two like 2j.
-    press(&mut state, KeyCode::Char('2'));
+    // Counts: 3k climbs three rows; 3d moves down three like 3j.
+    press(&mut state, KeyCode::Char('3'));
     press(&mut state, KeyCode::Char('k'));
     assert_eq!(selected(&state), workspace("ws_1"));
-    press(&mut state, KeyCode::Char('2'));
+    press(&mut state, KeyCode::Char('3'));
     press(&mut state, KeyCode::Char('d'));
-    assert_eq!(selected(&state), workspace("ws_last"));
+    assert_eq!(selected(&state), pane("pane_a"));
 
     // A bare d still applies the done filter instead of moving.
     press(&mut state, KeyCode::Char('d'));
@@ -1399,7 +1399,6 @@ fn navigator_horizontal_arrows_jump_sections_but_edit_the_search_cursor() {
     state.set_snapshot(Box::new(projected));
     state.set_pane_surface(surface());
     state.open_navigator_overlay();
-    state.expand_all_navigator_workspaces();
     let press = |state: &mut ClientShellState, code| {
         let outcome = state.handle_raw_events(vec![RawInputEvent::Key(
             crate::input::TerminalKey::new(code, KeyModifiers::empty()),
@@ -1459,7 +1458,6 @@ fn navigator_scrollbar_click_and_drag_scroll_without_opening_a_destination() {
     state.set_snapshot(Box::new(snapshot()));
     state.set_pane_surface(surface());
     state.open_navigator_overlay();
-    state.expand_all_navigator_workspaces();
     state.compose(106, 24).expect("small navigator");
     assert!(state.hits.navigator_scrollbar.is_empty());
 
@@ -1690,7 +1688,6 @@ fn navigator_grouping_keeps_snapshot_order_with_interleaved_tabs_and_panes() {
     state.set_endpoint_snapshot(&remote_id, Box::new(snapshot.clone()));
     state.set_snapshot(Box::new(snapshot));
     state.open_navigator_overlay();
-    state.expand_all_navigator_workspaces();
     let Some(ClientShellOverlay::Navigator(navigator)) = state.overlay.as_ref() else {
         panic!("navigator")
     };
@@ -1740,7 +1737,6 @@ fn navigator_render_scale_profile() {
             pane_surface.panes[0].pane_id = "pane_0_0_0".into();
             state.set_pane_surface(pane_surface);
             state.open_navigator_overlay();
-            state.expand_all_navigator_workspaces();
             if let Some(ClientShellOverlay::Navigator(navigator)) = state.overlay.as_mut() {
                 navigator.query = query.into();
             }

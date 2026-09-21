@@ -432,9 +432,9 @@ pub(super) fn navigator_rows(
                         },
                     });
                     // Searching or filtering shows matches directly; otherwise
-                    // pane rows stay hidden until the workspace is expanded.
+                    // a collapsed workspace hides its pane rows.
                     if filtering
-                        || navigator.expanded_workspaces.contains(&(
+                        || !navigator.collapsed_workspaces.contains(&(
                             endpoint.endpoint_id.clone(),
                             workspace.workspace_id.clone(),
                         ))

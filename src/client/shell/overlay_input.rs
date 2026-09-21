@@ -192,19 +192,6 @@ impl ClientShellState {
 
     pub(super) fn open_navigator_overlay(&mut self) {
         let mut navigator = ClientNavigatorOverlay::default();
-        // Start collapsed, but keep the active workspace open so the current
-        // pane row is visible and selectable right away.
-        if let Some(workspace_id) = self
-            .endpoints
-            .iter()
-            .find(|endpoint| endpoint.endpoint_id == self.active_endpoint_id)
-            .and_then(|endpoint| endpoint.snapshot.as_deref())
-            .and_then(|snapshot| snapshot.focused_workspace_id.clone())
-        {
-            navigator
-                .expanded_workspaces
-                .insert((self.active_endpoint_id.clone(), workspace_id));
-        }
         let rows =
             render::client_navigator_rows(&self.endpoints, &self.active_endpoint_id, &navigator);
         navigator.selected = rows
@@ -212,30 +199,6 @@ impl ClientShellState {
             .find(|row| row.current)
             .map(|row| row.target.clone());
         self.overlay = Some(ClientShellOverlay::Navigator(navigator));
-    }
-
-    /// Test helper: shows every pane row, as the navigator did before
-    /// workspaces started collapsed.
-    #[cfg(test)]
-    pub(super) fn expand_all_navigator_workspaces(&mut self) {
-        let keys = self
-            .endpoints
-            .iter()
-            .flat_map(|endpoint| {
-                endpoint
-                    .snapshot
-                    .as_deref()
-                    .into_iter()
-                    .flat_map(move |snapshot| {
-                        snapshot.workspaces.iter().map(move |workspace| {
-                            (endpoint.endpoint_id.clone(), workspace.workspace_id.clone())
-                        })
-                    })
-            })
-            .collect::<Vec<_>>();
-        if let Some(ClientShellOverlay::Navigator(navigator)) = self.overlay.as_mut() {
-            navigator.expanded_workspaces.extend(keys);
-        }
     }
 
     /// Expands or collapses the workspace the selection sits in. Collapsing
@@ -285,9 +248,9 @@ impl ClientShellState {
             return;
         };
         if expand {
-            navigator.expanded_workspaces.insert(key);
+            navigator.collapsed_workspaces.remove(&key);
         } else {
-            navigator.expanded_workspaces.remove(&key);
+            navigator.collapsed_workspaces.insert(key.clone());
             navigator.selected = Some(ClientNavigatorTarget::Workspace {
                 endpoint_id: key.0,
                 workspace_id: key.1,
