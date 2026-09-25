@@ -652,6 +652,10 @@ pub(super) enum PendingEndpointKind {
     PaneLinkResolve {
         target: super::link_hover::LinkHoverTarget,
     },
+    WorkspaceEditorCheck {
+        workspace_id: String,
+        pane_id: String,
+    },
     PaneLinkActivate {
         pane_id: String,
         inner_rect: Rect,
@@ -671,6 +675,12 @@ pub(super) enum PendingEndpointKind {
         generation: u64,
         session_generation: u64,
     },
+}
+
+pub(super) struct WorkspaceEditorCheck {
+    pub(super) pane_id: String,
+    pub(super) checked_at: std::time::Instant,
+    pub(super) is_neovim: bool,
 }
 
 pub(super) struct PendingEndpointRequest {
@@ -857,6 +867,9 @@ pub(crate) struct ClientShellState {
     pub(super) popup_terminal_id: Option<String>,
     pub(super) sidebar_collapsed: bool,
     pub(super) sidebar_collapsed_manual: bool,
+    pub(super) editor_source: Option<(ClientEndpointId, String)>,
+    pub(super) editor_checks: HashMap<String, WorkspaceEditorCheck>,
+    pub(super) last_editor_request: Option<std::time::Instant>,
     pub(super) sidebar_width: u16,
     pub(super) sidebar_width_manual: bool,
     pub(super) sidebar_section_split: f32,
@@ -1021,6 +1034,9 @@ impl ClientShellState {
             popup_terminal_id: None,
             sidebar_collapsed,
             sidebar_collapsed_manual: preferences.sidebar_collapsed.is_some(),
+            editor_source: None,
+            editor_checks: HashMap::new(),
+            last_editor_request: None,
             sidebar_width,
             sidebar_width_manual: preferences.sidebar_width.is_some(),
             sidebar_section_split,

@@ -3,6 +3,19 @@ use ratatui::{
     text::Line,
     widgets::{Paragraph, Widget},
 };
+use std::sync::OnceLock;
+use unicode_segmentation::UnicodeSegmentation;
+
+pub(in crate::client::shell) fn first_workspace_emoji(title: &str) -> Option<&str> {
+    static EMOJI: OnceLock<regex::Regex> = OnceLock::new();
+    let emoji = EMOJI.get_or_init(|| {
+        regex::Regex::new(r"\p{Emoji_Presentation}|\p{Extended_Pictographic}\x{FE0F}|\x{20E3}")
+            .expect("valid emoji pattern")
+    });
+    title
+        .graphemes(true)
+        .find(|grapheme| emoji.is_match(grapheme))
+}
 
 fn workspace_selection_background(palette: &Palette) -> ratatui::style::Color {
     if palette.selection_bg == ratatui::style::Color::Reset {
@@ -50,6 +63,8 @@ pub(crate) fn render_collapsed_sidebar(
     snapshot: &ClientShellSnapshot,
     config: &ClientShellConfig,
     selected_workspace_id: Option<&str>,
+    editor_source: Option<&(ClientEndpointId, String)>,
+    editor_checks: &HashMap<String, WorkspaceEditorCheck>,
     hits: &mut ShellHitMap,
 ) {
     let palette = &config.palette;
@@ -84,23 +99,43 @@ pub(crate) fn render_collapsed_sidebar(
         } else {
             Style::default().fg(palette.overlay0)
         };
-        put_text(
-            buffer,
-            rect.x,
-            rect.y,
-            rect.width.min(2),
-            &format!("{:<2}", index + 1),
-            number_style,
-        );
-        let status = workspace.agent_status;
-        put_text(
-            buffer,
-            rect.x.saturating_add(2),
-            rect.y,
-            rect.width.saturating_sub(2),
-            status_icon(status, config.status_indicators),
-            Style::default().fg(status_color(status, palette)),
-        );
+        if let Some(emoji) = super::super::workspace_icons::workspace_icon(
+            workspace,
+            snapshot,
+            &ClientEndpointId::Local,
+            editor_source,
+            editor_checks,
+        ) {
+            put_text(
+                buffer,
+                rect.x + rect.width.saturating_sub(super::display_width(emoji)) / 2,
+                rect.y,
+                rect.width,
+                emoji,
+                Style::default().fg(super::super::workspace_icons::workspace_icon_color(
+                    workspace.agent_status,
+                    palette,
+                )),
+            );
+        } else {
+            put_text(
+                buffer,
+                rect.x,
+                rect.y,
+                rect.width.min(2),
+                &format!("{:<2}", index + 1),
+                number_style,
+            );
+            let status = workspace.agent_status;
+            put_text(
+                buffer,
+                rect.x.saturating_add(2),
+                rect.y,
+                rect.width.saturating_sub(2),
+                status_icon(status, config.status_indicators),
+                Style::default().fg(status_color(status, palette)),
+            );
+        }
         hits.workspaces.push(WorkspaceHit {
             rect,
             endpoint_id: ClientEndpointId::Local,

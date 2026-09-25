@@ -1,5 +1,280 @@
 use super::*;
 
+#[test]
+fn workspace_title_uses_first_complete_emoji() {
+    use crate::client::shell::sidebar::first_workspace_emoji;
+
+    assert_eq!(first_workspace_emoji("Crew 🫡 then ⚓"), Some("🫡"));
+    assert_eq!(first_workspace_emoji("👩🏽‍💻 coding"), Some("👩🏽‍💻"));
+    assert_eq!(first_workspace_emoji("🇺🇸 remote"), Some("🇺🇸"));
+    assert_eq!(first_workspace_emoji("1️⃣ priority"), Some("1️⃣"));
+    assert_eq!(first_workspace_emoji("©️ notice"), Some("©️"));
+    assert_eq!(first_workspace_emoji("© copyright"), None);
+    assert_eq!(first_workspace_emoji("12 tasks"), None);
+    assert_eq!(first_workspace_emoji("No emoji"), None);
+}
+
+fn pane_process_result(name: Option<&str>) -> crate::api::schema::ResponseResult {
+    crate::api::schema::ResponseResult::PaneProcessInfo {
+        process_info: crate::api::schema::PaneProcessInfo {
+            pane_id: "pane_1".into(),
+            shell_pid: Some(1),
+            foreground_process_group_id: Some(2),
+            tty: None,
+            foreground_processes: name
+                .into_iter()
+                .map(|name| crate::api::schema::PaneProcessInfoProcess {
+                    pid: 2,
+                    name: name.into(),
+                    argv0: None,
+                    argv: None,
+                    cmdline: None,
+                    cwd: None,
+                })
+                .collect(),
+        },
+    }
+}
+
+#[test]
+fn lone_neovim_pane_overrides_workspace_emoji_and_stops_when_it_exits() {
+    let mut projected = snapshot();
+    projected.workspaces[0].label = "⚓ Commander".into();
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.sidebar_collapsed = true;
+    state.set_snapshot(Box::new(projected));
+    state.set_pane_surface(surface());
+    let now = std::time::Instant::now();
+    let [ClientShellAction::Endpoint { request, .. }] = &state.tick_workspace_editors(now)[..]
+    else {
+        panic!("expected a pane process check");
+    };
+    let request_id = request.id.clone();
+    assert!(matches!(
+        &request.method,
+        crate::api::schema::Method::PaneProcessInfo(params)
+            if params.pane_id.as_deref() == Some("pane_1")
+    ));
+    let (repaint, _) =
+        state.handle_endpoint_result("boot-1", &request_id, Ok(pane_process_result(Some("nvim"))));
+    assert!(repaint);
+    let frame = state.compose(100, 28).expect("Neovim sidebar");
+    let rect = state.hits.workspaces[0].rect;
+    let buffer = frame.to_ratatui_buffer().expect("frame buffer");
+    assert_eq!(buffer[(rect.x + 1, rect.y)].symbol(), "");
+    let mut without_emoji = state.snapshot.as_deref().expect("snapshot").clone();
+    without_emoji.workspaces[0].label = "Untitled".into();
+    state.set_snapshot(Box::new(without_emoji));
+    let frame = state
+        .compose(100, 28)
+        .expect("Neovim without a title emoji");
+    let buffer = frame.to_ratatui_buffer().expect("frame buffer");
+    assert_eq!(buffer[(rect.x + 1, rect.y)].symbol(), "");
+    assert!(state
+        .tick_workspace_editors(now + std::time::Duration::from_secs(1))
+        .is_empty());
+
+    let [ClientShellAction::Endpoint { request, .. }] =
+        &state.tick_workspace_editors(now + std::time::Duration::from_secs(5))[..]
+    else {
+        panic!("expected a new process check");
+    };
+    let request_id = request.id.clone();
+    let (repaint, _) =
+        state.handle_endpoint_result("boot-1", &request_id, Ok(pane_process_result(None)));
+    assert!(repaint);
+    let frame = state.compose(100, 28).expect("sidebar after Neovim exits");
+    let buffer = frame.to_ratatui_buffer().expect("frame buffer");
+    assert_eq!(buffer[(rect.x, rect.y)].symbol(), "1");
+
+    let [ClientShellAction::Endpoint { request, .. }] =
+        &state.tick_workspace_editors(now + std::time::Duration::from_secs(10))[..]
+    else {
+        panic!("expected a process check after Neovim starts");
+    };
+    let request_id = request.id.clone();
+    let (repaint, _) =
+        state.handle_endpoint_result("boot-1", &request_id, Ok(pane_process_result(Some("nvim"))));
+    assert!(repaint);
+    let frame = state.compose(100, 28).expect("sidebar after Neovim starts");
+    let buffer = frame.to_ratatui_buffer().expect("frame buffer");
+    assert_eq!(buffer[(rect.x + 1, rect.y)].symbol(), "");
+}
+
+#[test]
+fn workspace_icons_are_bright_only_when_attention_is_needed() {
+    for neovim in [false, true] {
+        for (status, bright) in [
+            (AgentStatus::Blocked, true),
+            (AgentStatus::Done, true),
+            (AgentStatus::Working, false),
+            (AgentStatus::Idle, false),
+            (AgentStatus::Unknown, false),
+        ] {
+            let mut state =
+                ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+            state.sidebar_collapsed = true;
+            if neovim {
+                state.editor_source = Some((ClientEndpointId::Local, "boot-1".into()));
+                state.editor_checks.insert(
+                    "ws_1".into(),
+                    WorkspaceEditorCheck {
+                        pane_id: "pane_1".into(),
+                        checked_at: std::time::Instant::now(),
+                        is_neovim: true,
+                    },
+                );
+            }
+            let mut projected = snapshot();
+            projected.workspaces[0].label = "🫡 Shipmate".into();
+            projected.workspaces[0].agent_status = status;
+            state.set_snapshot(Box::new(projected));
+            state.set_pane_surface(surface());
+            let frame = state.compose(100, 28).expect("collapsed workspace");
+            let rect = state.hits.workspaces[0].rect;
+            let buffer = frame.to_ratatui_buffer().expect("frame buffer");
+            let cell = &buffer[(rect.x + u16::from(neovim), rect.y)];
+            assert_eq!(cell.symbol(), if neovim { "" } else { "🫡" });
+            assert_eq!(
+                cell.fg,
+                if bright {
+                    state.config.palette.text
+                } else {
+                    state.config.palette.overlay0
+                },
+                "{status:?}, neovim={neovim}"
+            );
+        }
+    }
+}
+
+#[test]
+fn collapsed_local_workspace_without_emoji_keeps_default_indicator() {
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.sidebar_collapsed = true;
+    state.set_snapshot(Box::new(snapshot()));
+    state.set_pane_surface(surface());
+
+    let frame = state.compose(100, 28).expect("collapsed sidebar");
+    let rect = state.hits.workspaces[0].rect;
+    let buffer = frame.to_ratatui_buffer().expect("frame buffer");
+    assert_eq!(buffer[(rect.x, rect.y)].symbol(), "1");
+    assert_eq!(
+        buffer[(rect.x + 2, rect.y)].symbol(),
+        crate::client::shell::status_icon(AgentStatus::Idle, state.config.status_indicators)
+    );
+}
+
+#[test]
+fn old_server_keeps_title_emoji_without_process_checks() {
+    let mut projected = snapshot();
+    projected.workspaces[0].label = "🫡 Shipmate".into();
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.sidebar_collapsed = true;
+    state.set_snapshot(Box::new(projected));
+    state.set_pane_surface(surface());
+    state.set_endpoint_methods(Some(vec![]));
+    assert!(state
+        .tick_workspace_editors(std::time::Instant::now())
+        .is_empty());
+    let frame = state.compose(100, 28).expect("old server sidebar");
+    let rect = state.hits.workspaces[0].rect;
+    let buffer = frame.to_ratatui_buffer().expect("frame buffer");
+    assert_eq!(buffer[(rect.x, rect.y)].symbol(), "🫡");
+    assert!(state.visible_endpoint_notice.is_none());
+}
+
+#[test]
+fn neovim_icon_requires_one_pane_and_the_current_server() {
+    let mut projected = snapshot();
+    projected.workspaces[0].label = "🫡 Shipmate".into();
+    let mut second_pane = projected.panes[0].clone();
+    second_pane.pane_id = "pane_2".into();
+    projected.panes.push(second_pane);
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.sidebar_collapsed = true;
+    state.set_snapshot(Box::new(projected));
+    state.set_pane_surface(surface());
+    assert!(state
+        .tick_workspace_editors(std::time::Instant::now())
+        .is_empty());
+    let mut check = std::collections::HashMap::new();
+    check.insert(
+        "ws_1".into(),
+        WorkspaceEditorCheck {
+            pane_id: "pane_1".into(),
+            checked_at: std::time::Instant::now(),
+            is_neovim: true,
+        },
+    );
+    state.editor_checks = check;
+    state.editor_source = Some((ClientEndpointId::Local, "boot-1".into()));
+    let frame = state.compose(100, 28).expect("workspace with two panes");
+    let rect = state.hits.workspaces[0].rect;
+    let buffer = frame.to_ratatui_buffer().expect("frame buffer");
+    assert_eq!(buffer[(rect.x, rect.y)].symbol(), "🫡");
+
+    let mut updated = state.snapshot.as_deref().expect("snapshot").clone();
+    updated.panes.pop();
+    updated.boot_id = "boot-2".into();
+    state.set_snapshot(Box::new(updated));
+    let mut new_surface = surface();
+    new_surface.boot_id = "boot-2".into();
+    state.set_pane_surface(new_surface);
+    let frame = state.compose(100, 28).expect("new server");
+    let buffer = frame.to_ratatui_buffer().expect("frame buffer");
+    assert_eq!(buffer[(rect.x, rect.y)].symbol(), "🫡");
+}
+
+#[test]
+fn collapsed_local_workspace_shows_title_emoji() {
+    let mut projected = snapshot();
+    projected.workspaces[0].label = "Lead ⚓ and 🫡".into();
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.sidebar_collapsed = true;
+    state.set_snapshot(Box::new(projected));
+    state.set_pane_surface(surface());
+
+    let frame = state.compose(100, 28).expect("collapsed sidebar");
+    let rect = state.hits.workspaces[0].rect;
+    let buffer = frame.to_ratatui_buffer().expect("frame buffer");
+    assert_eq!(buffer[(rect.x, rect.y)].symbol(), "⚓");
+}
+
+#[test]
+#[ignore = "manual render profile"]
+fn collapsed_sidebar_render_scale_profile() {
+    for count in [1, 15] {
+        let mut projected = workspaces(count);
+        let pane = projected.panes[0].clone();
+        projected.panes = projected
+            .workspaces
+            .iter_mut()
+            .map(|workspace| {
+                workspace.label = format!("🫡 Workspace {}", workspace.number);
+                ClientShellPane {
+                    pane_id: format!("pane_{}", workspace.number),
+                    workspace_id: workspace.workspace_id.clone(),
+                    ..pane.clone()
+                }
+            })
+            .collect();
+        let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+        state.sidebar_collapsed = true;
+        state.set_snapshot(Box::new(projected));
+        state.set_pane_surface(surface());
+        state.compose(120, 40).expect("warm sidebar");
+        let start = std::time::Instant::now();
+        for _ in 0..1_000 {
+            std::hint::black_box(state.compose(120, 40));
+        }
+        println!(
+            "compact emoji workspaces={count} us/frame={:.1}",
+            start.elapsed().as_micros() as f64 / 1_000.0
+        );
+    }
+}
+
 fn workspaces(count: usize) -> ClientShellSnapshot {
     let mut projected = snapshot();
     projected.workspaces = (1..=count)

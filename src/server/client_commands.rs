@@ -28,6 +28,7 @@ const CLIENT_SHELL_METHODS: &[&str] = &[
     "pane.input.set",
     "pane.link.activate",
     "pane.link.resolve",
+    "pane.process_info",
     "pane.rename",
     "pane.resize",
     "pane.scroll",
@@ -297,6 +298,10 @@ mod tests {
             actual.remove("pane.link.resolve").as_deref(),
             Some("f5e4a3e01453ae7b188f127ce951c12c20e0bebcc17cc364eeb6d1a01fd5bf81")
         );
+        assert_eq!(
+            actual.remove("pane.process_info").as_deref(),
+            Some("edb54d31ddde3f9b95d090f900cb500d57cc95b4c790628baa3b213b9fbfa10e")
+        );
 
         assert_eq!(
             actual, expected,
@@ -371,6 +376,11 @@ mod tests {
                 col: 0,
                 content_revision: None,
                 offset_from_bottom: None,
+            },
+        )));
+        assert!(supports_client_shell_method(&Method::PaneProcessInfo(
+            crate::api::schema::PaneProcessInfoParams {
+                pane_id: Some("w1:p1".into()),
             },
         )));
         assert!(!supports_client_shell_method(&Method::Ping(

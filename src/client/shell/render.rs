@@ -233,6 +233,8 @@ pub(super) struct ShellRenderState<'a> {
     pub(super) endpoints: &'a [ClientShellEndpoint],
     pub(super) active_endpoint_id: &'a ClientEndpointId,
     pub(super) collapsed_endpoints: &'a HashSet<ClientEndpointId>,
+    pub(super) editor_source: Option<&'a (ClientEndpointId, String)>,
+    pub(super) editor_checks: &'a HashMap<String, WorkspaceEditorCheck>,
     pub(super) collapsed_groups: &'a HashSet<String>,
     pub(super) remote_collapsed_groups: &'a HashMap<ClientEndpointId, HashSet<String>>,
     pub(super) workspace_scroll: &'a mut usize,
@@ -295,6 +297,8 @@ pub(super) fn render_shell(
                 state
                     .selected_workspace_id
                     .map(|target| target.workspace_id.as_str()),
+                state.editor_source,
+                state.editor_checks,
                 &mut hits,
             );
         } else {

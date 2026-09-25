@@ -137,41 +137,67 @@ pub(super) fn render_collapsed(
                 );
             }
             let stale = endpoint.status != ClientEndpointStatus::Online;
-            let number = format!(" {}", workspace.number);
-            let number_width = super::render::display_width(&number).min(rect.width);
             let dim = if stale {
                 Modifier::DIM
             } else {
                 Modifier::empty()
             };
-            put_text(
-                buffer,
-                rect.x,
-                rect.y,
-                number_width,
-                &number,
-                Style::default()
-                    .fg(if focused && !stale {
-                        palette.text
-                    } else {
-                        palette.overlay0
-                    })
-                    .add_modifier(dim),
-            );
-            put_text(
-                buffer,
-                rect.x.saturating_add(number_width),
-                rect.y,
-                rect.width.saturating_sub(number_width),
-                status_icon(workspace.agent_status, config.status_indicators),
-                Style::default()
-                    .fg(if stale {
-                        palette.overlay0
-                    } else {
-                        status_color(workspace.agent_status, palette)
-                    })
-                    .add_modifier(dim),
-            );
+            if let Some(emoji) = super::workspace_icons::workspace_icon(
+                workspace,
+                snapshot,
+                &endpoint.endpoint_id,
+                state.editor_source,
+                state.editor_checks,
+            ) {
+                put_text(
+                    buffer,
+                    rect.x + rect.width.saturating_sub(display_width(emoji)) / 2,
+                    rect.y,
+                    rect.width,
+                    emoji,
+                    Style::default()
+                        .fg(if stale {
+                            palette.overlay0
+                        } else {
+                            super::workspace_icons::workspace_icon_color(
+                                workspace.agent_status,
+                                palette,
+                            )
+                        })
+                        .add_modifier(dim),
+                );
+            } else {
+                let number = format!(" {}", workspace.number);
+                let number_width = display_width(&number).min(rect.width);
+                put_text(
+                    buffer,
+                    rect.x,
+                    rect.y,
+                    number_width,
+                    &number,
+                    Style::default()
+                        .fg(if focused && !stale {
+                            palette.text
+                        } else {
+                            palette.overlay0
+                        })
+                        .add_modifier(dim),
+                );
+                put_text(
+                    buffer,
+                    rect.x.saturating_add(number_width),
+                    rect.y,
+                    rect.width.saturating_sub(number_width),
+                    status_icon(workspace.agent_status, config.status_indicators),
+                    Style::default()
+                        .fg(if stale {
+                            palette.overlay0
+                        } else {
+                            status_color(workspace.agent_status, palette)
+                        })
+                        .add_modifier(dim),
+                );
+            }
             hits.workspaces.push(WorkspaceHit {
                 rect,
                 endpoint_id: endpoint.endpoint_id.clone(),

@@ -2458,6 +2458,88 @@ fn workspace_drag_rejects_foreign_endpoint_slots() {
 }
 
 #[test]
+fn collapsed_workspaces_show_title_emoji_on_local_and_remote_machines() {
+    let (mut state, endpoint_id) = state_with_remote();
+    let mut local = state.snapshot.as_deref().expect("local snapshot").clone();
+    local.workspaces[0].label = "⚓ Commander 🫡".into();
+    state.set_snapshot(Box::new(local));
+    let mut remote = state
+        .endpoints
+        .iter()
+        .find(|endpoint| endpoint.endpoint_id == endpoint_id)
+        .expect("remote endpoint")
+        .snapshot
+        .as_deref()
+        .expect("remote snapshot")
+        .clone();
+    remote.workspaces[0].label = "🫡 Shipmate".into();
+    state.set_endpoint_snapshot(&endpoint_id, Box::new(remote));
+    state.sidebar_collapsed = true;
+
+    let frame = state.compose(100, 28).expect("collapsed aggregate sidebar");
+    let buffer = frame.to_ratatui_buffer().expect("frame buffer");
+    for (endpoint, expected) in [(ClientEndpointId::Local, "⚓"), (endpoint_id, "🫡")] {
+        let rect = state
+            .hits
+            .workspaces
+            .iter()
+            .find(|hit| hit.endpoint_id == endpoint)
+            .expect("workspace hit")
+            .rect;
+        assert_eq!(
+            buffer[(rect.x, rect.y)].symbol(),
+            expected,
+            "{rect:?}: {:?}",
+            frame_rows(&frame)
+        );
+    }
+}
+
+#[test]
+fn collapsed_remote_workspace_emoji_follows_its_attention_state() {
+    let (mut state, endpoint_id) = state_with_remote();
+    state.sidebar_collapsed = true;
+    for (status, bright) in [
+        (AgentStatus::Done, true),
+        (AgentStatus::Blocked, true),
+        (AgentStatus::Working, false),
+        (AgentStatus::Idle, false),
+    ] {
+        let mut remote = state
+            .endpoints
+            .iter()
+            .find(|endpoint| endpoint.endpoint_id == endpoint_id)
+            .expect("remote endpoint")
+            .snapshot
+            .as_deref()
+            .expect("remote snapshot")
+            .clone();
+        remote.workspaces[0].label = "🫡 Shipmate".into();
+        remote.workspaces[0].agent_status = status;
+        state.set_endpoint_snapshot(&endpoint_id, Box::new(remote));
+        let frame = state.compose(100, 28).expect("collapsed aggregate sidebar");
+        let rect = state
+            .hits
+            .workspaces
+            .iter()
+            .find(|hit| hit.endpoint_id == endpoint_id)
+            .expect("remote workspace")
+            .rect;
+        let buffer = frame.to_ratatui_buffer().expect("frame buffer");
+        assert_eq!(buffer[(rect.x, rect.y)].symbol(), "🫡");
+        assert_eq!(
+            buffer[(rect.x, rect.y)].fg,
+            if bright {
+                state.config.palette.text
+            } else {
+                state.config.palette.overlay0
+            },
+            "{status:?}"
+        );
+    }
+}
+
+#[test]
 fn collapsed_aggregate_workspace_status_uses_its_status_color() {
     use crate::api::schema::AgentStatus;
 
