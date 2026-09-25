@@ -360,13 +360,18 @@ pub(super) struct ClientNavigatorRow {
     pub(super) target: ClientNavigatorTarget,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(super) struct ClientNavigatorOverlay {
     pub(super) query: TextEditor,
     pub(super) search_focused: bool,
     pub(super) selected: Option<ClientNavigatorTarget>,
     pub(super) scroll: usize,
     pub(super) filter: Option<ClientNavigatorFilter>,
+    /// Workspaces collapsed to their workspace row. Everything else shows
+    /// its pane rows; searching and filtering ignore collapse.
+    pub(super) collapsed_workspaces: HashSet<(ClientEndpointId, String)>,
+    /// Digits typed before j/k/Up/Down, vim-count style.
+    pub(super) pending_count: usize,
 }
 
 #[derive(Debug)]

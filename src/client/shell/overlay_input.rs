@@ -191,13 +191,7 @@ impl ClientShellState {
     }
 
     pub(super) fn open_navigator_overlay(&mut self) {
-        let mut navigator = ClientNavigatorOverlay {
-            query: TextEditor::default(),
-            search_focused: false,
-            selected: None,
-            scroll: 0,
-            filter: None,
-        };
+        let mut navigator = ClientNavigatorOverlay::default();
         let rows =
             render::client_navigator_rows(&self.endpoints, &self.active_endpoint_id, &navigator);
         navigator.selected = rows
@@ -205,6 +199,63 @@ impl ClientShellState {
             .find(|row| row.current)
             .map(|row| row.target.clone());
         self.overlay = Some(ClientShellOverlay::Navigator(navigator));
+    }
+
+    /// Expands or collapses the workspace the selection sits in. Collapsing
+    /// from a pane row moves the selection to its workspace row.
+    fn set_navigator_workspace_expanded(&mut self, expand: bool) {
+        let key = {
+            let Some(ClientShellOverlay::Navigator(navigator)) = self.overlay.as_ref() else {
+                return;
+            };
+            let rows = render::client_navigator_rows(
+                &self.endpoints,
+                &self.active_endpoint_id,
+                navigator,
+            );
+            let target =
+                super::aggregate_navigation::selected_navigator_target(&rows, navigator);
+            match target {
+                Some(ClientNavigatorTarget::Workspace {
+                    endpoint_id,
+                    workspace_id,
+                }) => (endpoint_id, workspace_id),
+                Some(ClientNavigatorTarget::Pane {
+                    endpoint_id,
+                    pane_id,
+                }) => {
+                    let Some(workspace_id) = self
+                        .endpoints
+                        .iter()
+                        .find(|endpoint| endpoint.endpoint_id == endpoint_id)
+                        .and_then(|endpoint| endpoint.snapshot.as_deref())
+                        .and_then(|snapshot| {
+                            snapshot
+                                .panes
+                                .iter()
+                                .find(|pane| pane.pane_id == pane_id)
+                                .map(|pane| pane.workspace_id.clone())
+                        })
+                    else {
+                        return;
+                    };
+                    (endpoint_id, workspace_id)
+                }
+                _ => return,
+            }
+        };
+        let Some(ClientShellOverlay::Navigator(navigator)) = self.overlay.as_mut() else {
+            return;
+        };
+        if expand {
+            navigator.collapsed_workspaces.remove(&key);
+        } else {
+            navigator.collapsed_workspaces.insert(key.clone());
+            navigator.selected = Some(ClientNavigatorTarget::Workspace {
+                endpoint_id: key.0,
+                workspace_id: key.1,
+            });
+        }
     }
 
     pub(super) fn move_navigator_selection(&mut self, delta: isize) {
@@ -679,6 +730,39 @@ impl ClientShellState {
                 }
                 return;
             }
+            // A typed count applies to the next j/k/Up/Down; any other key
+            // discards it.
+            let pending = if let Some(ClientShellOverlay::Navigator(navigator)) =
+                self.overlay.as_mut()
+            {
+                std::mem::take(&mut navigator.pending_count)
+            } else {
+                0
+            };
+            if let KeyCode::Char(ch @ '0'..='9') = code {
+                if modifiers.is_empty() && !(pending == 0 && ch == '0') {
+                    if let Some(ClientShellOverlay::Navigator(navigator)) = self.overlay.as_mut()
+                    {
+                        navigator.pending_count = pending
+                            .saturating_mul(10)
+                            .saturating_add((ch as u8 - b'0') as usize)
+                            .min(999);
+                    }
+                    outcome.repaint = true;
+                    return;
+                }
+            }
+            let count = pending.max(1) as isize;
+            if matches!(code, KeyCode::Char('l')) && modifiers.is_empty() {
+                self.set_navigator_workspace_expanded(true);
+                outcome.repaint = true;
+                return;
+            }
+            if matches!(code, KeyCode::Char('h')) && modifiers.is_empty() {
+                self.set_navigator_workspace_expanded(false);
+                outcome.repaint = true;
+                return;
+            }
             if matches!(code, KeyCode::Left | KeyCode::Right) && modifiers.is_empty() {
                 self.move_navigator_workspace(code == KeyCode::Right);
                 outcome.repaint = true;
@@ -727,12 +811,12 @@ impl ClientShellState {
                 return;
             }
             if matches!(code, KeyCode::Down | KeyCode::Char('j')) && modifiers.is_empty() {
-                self.move_navigator_selection(1);
+                self.move_navigator_selection(count);
                 outcome.repaint = true;
                 return;
             }
             if matches!(code, KeyCode::Up | KeyCode::Char('k')) && modifiers.is_empty() {
-                self.move_navigator_selection(-1);
+                self.move_navigator_selection(-count);
                 outcome.repaint = true;
                 return;
             }
@@ -745,6 +829,20 @@ impl ClientShellState {
                 self.move_navigator_selection(-8);
                 outcome.repaint = true;
                 return;
+            }
+            // With a count, d/u move like j/k (5d = five down); without one
+            // they keep their filter meanings.
+            if pending > 0 && modifiers.is_empty() {
+                if code == KeyCode::Char('d') {
+                    self.move_navigator_selection(count);
+                    outcome.repaint = true;
+                    return;
+                }
+                if code == KeyCode::Char('u') {
+                    self.move_navigator_selection(-count);
+                    outcome.repaint = true;
+                    return;
+                }
             }
             if let Some(filter) = match code {
                 KeyCode::Char('b') if modifiers.is_empty() => Some(ClientNavigatorFilter::Blocked),

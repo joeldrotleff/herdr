@@ -431,7 +431,16 @@ pub(super) fn navigator_rows(
                             workspace_id: workspace.workspace_id.clone(),
                         },
                     });
-                    endpoint_rows.extend(children);
+                    // Searching or filtering shows matches directly; otherwise
+                    // a collapsed workspace hides its pane rows.
+                    if filtering
+                        || !navigator.collapsed_workspaces.contains(&(
+                            endpoint.endpoint_id.clone(),
+                            workspace.workspace_id.clone(),
+                        ))
+                    {
+                        endpoint_rows.extend(children);
+                    }
                 }
             }
         }
