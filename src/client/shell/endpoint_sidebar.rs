@@ -149,11 +149,28 @@ pub(super) fn render_collapsed(
                 state.editor_source,
                 state.editor_checks,
             ) {
+                // Pack the number and icon together so "1🫡" fits the 3-column row.
+                let number = workspace.number.to_string();
+                let number_width = display_width(&number).min(rect.width);
                 put_text(
                     buffer,
-                    rect.x + rect.width.saturating_sub(display_width(emoji)) / 2,
+                    rect.x,
                     rect.y,
-                    rect.width,
+                    number_width,
+                    &number,
+                    Style::default()
+                        .fg(if focused && !stale {
+                            palette.blue
+                        } else {
+                            palette.overlay0
+                        })
+                        .add_modifier(dim),
+                );
+                put_text(
+                    buffer,
+                    rect.x.saturating_add(number_width),
+                    rect.y,
+                    rect.width.saturating_sub(number_width),
                     emoji,
                     Style::default()
                         .fg(if stale {

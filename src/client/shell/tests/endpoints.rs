@@ -2488,6 +2488,12 @@ fn collapsed_workspaces_show_title_emoji_on_local_and_remote_machines() {
             .rect;
         assert_eq!(
             buffer[(rect.x, rect.y)].symbol(),
+            "1",
+            "{rect:?}: {:?}",
+            frame_rows(&frame)
+        );
+        assert_eq!(
+            buffer[(rect.x + 1, rect.y)].symbol(),
             expected,
             "{rect:?}: {:?}",
             frame_rows(&frame)
@@ -2526,9 +2532,9 @@ fn collapsed_remote_workspace_emoji_follows_its_attention_state() {
             .expect("remote workspace")
             .rect;
         let buffer = frame.to_ratatui_buffer().expect("frame buffer");
-        assert_eq!(buffer[(rect.x, rect.y)].symbol(), "🫡");
+        assert_eq!(buffer[(rect.x + 1, rect.y)].symbol(), "🫡");
         assert_eq!(
-            buffer[(rect.x, rect.y)].fg,
+            buffer[(rect.x + 1, rect.y)].fg,
             if bright {
                 state.config.palette.text
             } else {
