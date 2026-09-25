@@ -133,7 +133,8 @@ fn workspace_icons_are_bright_only_when_attention_is_needed() {
             let frame = state.compose(100, 28).expect("collapsed workspace");
             let rect = state.hits.workspaces[0].rect;
             let buffer = frame.to_ratatui_buffer().expect("frame buffer");
-            let cell = &buffer[(rect.x + u16::from(neovim), rect.y)];
+            assert_eq!(buffer[(rect.x, rect.y)].symbol(), "1");
+            let cell = &buffer[(rect.x + 1, rect.y)];
             assert_eq!(cell.symbol(), if neovim { "" } else { "🫡" });
             assert_eq!(
                 cell.fg,
@@ -181,7 +182,7 @@ fn old_server_keeps_title_emoji_without_process_checks() {
     let frame = state.compose(100, 28).expect("old server sidebar");
     let rect = state.hits.workspaces[0].rect;
     let buffer = frame.to_ratatui_buffer().expect("frame buffer");
-    assert_eq!(buffer[(rect.x, rect.y)].symbol(), "🫡");
+    assert_eq!(buffer[(rect.x + 1, rect.y)].symbol(), "🫡");
     assert!(state.visible_endpoint_notice.is_none());
 }
 
@@ -213,7 +214,7 @@ fn neovim_icon_requires_one_pane_and_the_current_server() {
     let frame = state.compose(100, 28).expect("workspace with two panes");
     let rect = state.hits.workspaces[0].rect;
     let buffer = frame.to_ratatui_buffer().expect("frame buffer");
-    assert_eq!(buffer[(rect.x, rect.y)].symbol(), "🫡");
+    assert_eq!(buffer[(rect.x + 1, rect.y)].symbol(), "🫡");
 
     let mut updated = state.snapshot.as_deref().expect("snapshot").clone();
     updated.panes.pop();
@@ -224,7 +225,7 @@ fn neovim_icon_requires_one_pane_and_the_current_server() {
     state.set_pane_surface(new_surface);
     let frame = state.compose(100, 28).expect("new server");
     let buffer = frame.to_ratatui_buffer().expect("frame buffer");
-    assert_eq!(buffer[(rect.x, rect.y)].symbol(), "🫡");
+    assert_eq!(buffer[(rect.x + 1, rect.y)].symbol(), "🫡");
 }
 
 #[test]
@@ -239,7 +240,8 @@ fn collapsed_local_workspace_shows_title_emoji() {
     let frame = state.compose(100, 28).expect("collapsed sidebar");
     let rect = state.hits.workspaces[0].rect;
     let buffer = frame.to_ratatui_buffer().expect("frame buffer");
-    assert_eq!(buffer[(rect.x, rect.y)].symbol(), "⚓");
+    assert_eq!(buffer[(rect.x, rect.y)].symbol(), "1");
+    assert_eq!(buffer[(rect.x + 1, rect.y)].symbol(), "⚓");
 }
 
 #[test]

@@ -106,11 +106,15 @@ pub(crate) fn render_collapsed_sidebar(
             editor_source,
             editor_checks,
         ) {
+            // Pack the number and icon together so "1🫡" fits the 3-column row.
+            let number = (index + 1).to_string();
+            put_text(buffer, rect.x, rect.y, rect.width, &number, number_style);
+            let number_width = super::display_width(&number);
             put_text(
                 buffer,
-                rect.x + rect.width.saturating_sub(super::display_width(emoji)) / 2,
+                rect.x.saturating_add(number_width),
                 rect.y,
-                rect.width,
+                rect.width.saturating_sub(number_width),
                 emoji,
                 Style::default().fg(super::super::workspace_icons::workspace_icon_color(
                     workspace.agent_status,
