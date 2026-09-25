@@ -208,13 +208,9 @@ impl ClientShellState {
             let Some(ClientShellOverlay::Navigator(navigator)) = self.overlay.as_ref() else {
                 return;
             };
-            let rows = render::client_navigator_rows(
-                &self.endpoints,
-                &self.active_endpoint_id,
-                navigator,
-            );
-            let target =
-                super::aggregate_navigation::selected_navigator_target(&rows, navigator);
+            let rows =
+                render::client_navigator_rows(&self.endpoints, &self.active_endpoint_id, navigator);
+            let target = super::aggregate_navigation::selected_navigator_target(&rows, navigator);
             match target {
                 Some(ClientNavigatorTarget::Workspace {
                     endpoint_id,
@@ -732,17 +728,15 @@ impl ClientShellState {
             }
             // A typed count applies to the next j/k/Up/Down; any other key
             // discards it.
-            let pending = if let Some(ClientShellOverlay::Navigator(navigator)) =
-                self.overlay.as_mut()
-            {
-                std::mem::take(&mut navigator.pending_count)
-            } else {
-                0
-            };
+            let pending =
+                if let Some(ClientShellOverlay::Navigator(navigator)) = self.overlay.as_mut() {
+                    std::mem::take(&mut navigator.pending_count)
+                } else {
+                    0
+                };
             if let KeyCode::Char(ch @ '0'..='9') = code {
                 if modifiers.is_empty() && !(pending == 0 && ch == '0') {
-                    if let Some(ClientShellOverlay::Navigator(navigator)) = self.overlay.as_mut()
-                    {
+                    if let Some(ClientShellOverlay::Navigator(navigator)) = self.overlay.as_mut() {
                         navigator.pending_count = pending
                             .saturating_mul(10)
                             .saturating_add((ch as u8 - b'0') as usize)

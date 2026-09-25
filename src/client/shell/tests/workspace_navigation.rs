@@ -159,6 +159,7 @@ fn collapsed_local_workspace_without_emoji_keeps_default_indicator() {
     let rect = state.hits.workspaces[0].rect;
     let buffer = frame.to_ratatui_buffer().expect("frame buffer");
     assert_eq!(buffer[(rect.x, rect.y)].symbol(), "1");
+    assert_eq!(buffer[(rect.x, rect.y)].fg, state.config.palette.blue);
     assert_eq!(
         buffer[(rect.x + 2, rect.y)].symbol(),
         crate::client::shell::status_icon(AgentStatus::Idle, state.config.status_indicators)

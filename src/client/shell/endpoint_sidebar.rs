@@ -177,7 +177,7 @@ pub(super) fn render_collapsed(
                     &number,
                     Style::default()
                         .fg(if focused && !stale {
-                            palette.text
+                            palette.blue
                         } else {
                             palette.overlay0
                         })
