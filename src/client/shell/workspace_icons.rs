@@ -32,17 +32,30 @@ pub(super) fn workspace_icon<'a>(
             .get(&workspace.workspace_id)
             .is_some_and(|check| {
                 check.is_neovim
-                    && snapshot
-                        .panes
-                        .iter()
-                        .filter(|pane| pane.workspace_id == workspace.workspace_id)
-                        .map(|pane| pane.pane_id.as_str())
-                        .eq(std::iter::once(check.pane_id.as_str()))
+                    && active_tab_pane(workspace, snapshot)
+                        .is_some_and(|pane| pane.pane_id == check.pane_id)
             })
     {
         return Some(NEOVIM_ICON);
     }
     super::sidebar::first_workspace_emoji(&workspace.label)
+}
+
+fn active_tab_pane<'a>(
+    workspace: &ClientShellWorkspace,
+    snapshot: &'a ClientShellSnapshot,
+) -> Option<&'a crate::protocol::ClientShellPane> {
+    let mut panes = snapshot.panes.iter().filter(|pane| {
+        pane.workspace_id == workspace.workspace_id && pane.tab_id == workspace.active_tab_id
+    });
+    let first = panes.next()?;
+    let second = panes.next();
+    if second.is_none() || first.focused {
+        return Some(first);
+    }
+    second
+        .filter(|pane| pane.focused)
+        .or_else(|| panes.find(|pane| pane.focused))
 }
 
 fn is_neovim_process(process: &crate::api::schema::PaneProcessInfoProcess) -> bool {
@@ -88,16 +101,9 @@ impl ClientShellState {
         }
         let method_name = "pane.process_info";
         for workspace in &snapshot.workspaces {
-            let mut panes = snapshot
-                .panes
-                .iter()
-                .filter(|pane| pane.workspace_id == workspace.workspace_id);
-            let Some(pane) = panes.next() else {
+            let Some(pane) = active_tab_pane(workspace, snapshot) else {
                 continue;
             };
-            if panes.next().is_some() {
-                continue;
-            }
             if self
                 .editor_checks
                 .get(&workspace.workspace_id)

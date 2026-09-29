@@ -130,7 +130,7 @@ pub(super) fn render_collapsed(
             } else if focused {
                 buffer.set_style(
                     rect,
-                    Style::default().bg(super::sidebar::workspace_active_background(
+                    Style::default().bg(super::sidebar::compact_workspace_active_background(
                         palette,
                         state.selected_workspace_id.is_some(),
                     )),
@@ -142,79 +142,51 @@ pub(super) fn render_collapsed(
             } else {
                 Modifier::empty()
             };
-            if let Some(emoji) = super::workspace_icons::workspace_icon(
+            let icon = super::workspace_icons::workspace_icon(
                 workspace,
                 snapshot,
                 &endpoint.endpoint_id,
                 state.editor_source,
                 state.editor_checks,
-            ) {
-                // Pack the number and icon together so "1🫡" fits the 3-column row.
-                let number = workspace.number.to_string();
-                let number_width = display_width(&number).min(rect.width);
-                put_text(
-                    buffer,
-                    rect.x,
-                    rect.y,
-                    number_width,
-                    &number,
-                    Style::default()
-                        .fg(if focused && !stale {
-                            palette.blue
-                        } else {
-                            palette.overlay0
-                        })
-                        .add_modifier(dim),
-                );
-                put_text(
-                    buffer,
-                    rect.x.saturating_add(number_width),
-                    rect.y,
-                    rect.width.saturating_sub(number_width),
-                    emoji,
-                    Style::default()
-                        .fg(if stale {
-                            palette.overlay0
-                        } else {
-                            super::workspace_icons::workspace_icon_color(
-                                workspace.agent_status,
-                                palette,
-                            )
-                        })
-                        .add_modifier(dim),
-                );
-            } else {
-                let number = format!(" {}", workspace.number);
-                let number_width = display_width(&number).min(rect.width);
-                put_text(
-                    buffer,
-                    rect.x,
-                    rect.y,
-                    number_width,
-                    &number,
-                    Style::default()
-                        .fg(if focused && !stale {
-                            palette.blue
-                        } else {
-                            palette.overlay0
-                        })
-                        .add_modifier(dim),
-                );
-                put_text(
-                    buffer,
-                    rect.x.saturating_add(number_width),
-                    rect.y,
-                    rect.width.saturating_sub(number_width),
-                    status_icon(workspace.agent_status, config.status_indicators),
-                    Style::default()
-                        .fg(if stale {
-                            palette.overlay0
-                        } else {
-                            status_color(workspace.agent_status, palette)
-                        })
-                        .add_modifier(dim),
-                );
-            }
+            )
+            .unwrap_or(">");
+            let number = workspace.number.to_string();
+            let number_width = display_width(&number).min(rect.width);
+            let icon_x = rect
+                .right()
+                .saturating_sub(display_width(icon))
+                .max(rect.x.saturating_add(number_width));
+            put_text(
+                buffer,
+                rect.x,
+                rect.y,
+                number_width,
+                &number,
+                Style::default()
+                    .fg(if focused && !stale {
+                        palette.blue
+                    } else {
+                        palette.overlay0
+                    })
+                    .add_modifier(dim),
+            );
+            put_text(
+                buffer,
+                icon_x,
+                rect.y,
+                rect.right().saturating_sub(icon_x),
+                icon,
+                Style::default()
+                    .fg(if stale {
+                        palette.overlay0
+                    } else {
+                        super::workspace_icons::workspace_icon_color(
+                            workspace.agent_status,
+                            palette,
+                        )
+                    })
+                    .add_modifier(dim),
+            );
             hits.workspaces.push(WorkspaceHit {
                 rect,
                 endpoint_id: endpoint.endpoint_id.clone(),

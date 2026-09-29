@@ -61,7 +61,7 @@ fn lone_neovim_pane_overrides_workspace_emoji_and_stops_when_it_exits() {
     let frame = state.compose(100, 28).expect("Neovim sidebar");
     let rect = state.hits.workspaces[0].rect;
     let buffer = frame.to_ratatui_buffer().expect("frame buffer");
-    assert_eq!(buffer[(rect.x + 1, rect.y)].symbol(), "");
+    assert_eq!(buffer[(rect.right() - 1, rect.y)].symbol(), "");
     let mut without_emoji = state.snapshot.as_deref().expect("snapshot").clone();
     without_emoji.workspaces[0].label = "Untitled".into();
     state.set_snapshot(Box::new(without_emoji));
@@ -69,7 +69,7 @@ fn lone_neovim_pane_overrides_workspace_emoji_and_stops_when_it_exits() {
         .compose(100, 28)
         .expect("Neovim without a title emoji");
     let buffer = frame.to_ratatui_buffer().expect("frame buffer");
-    assert_eq!(buffer[(rect.x + 1, rect.y)].symbol(), "");
+    assert_eq!(buffer[(rect.right() - 1, rect.y)].symbol(), "");
     assert!(state
         .tick_workspace_editors(now + std::time::Duration::from_secs(1))
         .is_empty());
@@ -98,7 +98,59 @@ fn lone_neovim_pane_overrides_workspace_emoji_and_stops_when_it_exits() {
     assert!(repaint);
     let frame = state.compose(100, 28).expect("sidebar after Neovim starts");
     let buffer = frame.to_ratatui_buffer().expect("frame buffer");
-    assert_eq!(buffer[(rect.x + 1, rect.y)].symbol(), "");
+    assert_eq!(buffer[(rect.right() - 1, rect.y)].symbol(), "");
+}
+
+#[test]
+fn neovim_icon_follows_the_active_tab() {
+    let mut projected = snapshot();
+    projected.workspaces[0].label = "🫡 Editor".into();
+    let mut other_pane = projected.panes[0].clone();
+    other_pane.pane_id = "pane_2".into();
+    other_pane.tab_id = "tab_2".into();
+    projected.panes.push(other_pane);
+    let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+    state.sidebar_collapsed = true;
+    state.set_snapshot(Box::new(projected));
+    state.set_pane_surface(surface());
+
+    let now = std::time::Instant::now();
+    let [ClientShellAction::Endpoint { request, .. }] = &state.tick_workspace_editors(now)[..]
+    else {
+        panic!("expected active tab process check");
+    };
+    assert!(matches!(
+        &request.method,
+        crate::api::schema::Method::PaneProcessInfo(params)
+            if params.pane_id.as_deref() == Some("pane_1")
+    ));
+    let request_id = request.id.clone();
+    state.handle_endpoint_result("boot-1", &request_id, Ok(pane_process_result(Some("nvim"))));
+    let frame = state.compose(100, 28).expect("active Neovim tab");
+    let rect = state.hits.workspaces[0].rect;
+    assert_eq!(
+        frame.to_ratatui_buffer().expect("frame buffer")[(rect.right() - 1, rect.y)].symbol(),
+        ""
+    );
+
+    let mut switched = state.snapshot.as_deref().expect("snapshot").clone();
+    switched.workspaces[0].active_tab_id = "tab_2".into();
+    state.set_snapshot(Box::new(switched));
+    let frame = state.compose(100, 28).expect("other tab");
+    assert_eq!(
+        frame.to_ratatui_buffer().expect("frame buffer")[(rect.x + 1, rect.y)].symbol(),
+        "🫡"
+    );
+    let [ClientShellAction::Endpoint { request, .. }] =
+        &state.tick_workspace_editors(now + std::time::Duration::from_millis(300))[..]
+    else {
+        panic!("expected new tab process check");
+    };
+    assert!(matches!(
+        &request.method,
+        crate::api::schema::Method::PaneProcessInfo(params)
+            if params.pane_id.as_deref() == Some("pane_2")
+    ));
 }
 
 #[test]
@@ -134,7 +186,8 @@ fn workspace_icons_are_bright_only_when_attention_is_needed() {
             let rect = state.hits.workspaces[0].rect;
             let buffer = frame.to_ratatui_buffer().expect("frame buffer");
             assert_eq!(buffer[(rect.x, rect.y)].symbol(), "1");
-            let cell = &buffer[(rect.x + 1, rect.y)];
+            let icon_x = rect.right() - if neovim { 1 } else { 2 };
+            let cell = &buffer[(icon_x, rect.y)];
             assert_eq!(cell.symbol(), if neovim { "" } else { "🫡" });
             assert_eq!(
                 cell.fg,
@@ -150,7 +203,7 @@ fn workspace_icons_are_bright_only_when_attention_is_needed() {
 }
 
 #[test]
-fn collapsed_local_workspace_without_emoji_keeps_default_indicator() {
+fn collapsed_local_workspace_without_emoji_shows_fallback_icon() {
     let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
     state.sidebar_collapsed = true;
     state.set_snapshot(Box::new(snapshot()));
@@ -161,10 +214,7 @@ fn collapsed_local_workspace_without_emoji_keeps_default_indicator() {
     let buffer = frame.to_ratatui_buffer().expect("frame buffer");
     assert_eq!(buffer[(rect.x, rect.y)].symbol(), "1");
     assert_eq!(buffer[(rect.x, rect.y)].fg, state.config.palette.blue);
-    assert_eq!(
-        buffer[(rect.x + 2, rect.y)].symbol(),
-        crate::client::shell::status_icon(AgentStatus::Idle, state.config.status_indicators)
-    );
+    assert_eq!(buffer[(rect.right() - 1, rect.y)].symbol(), ">");
 }
 
 #[test]
@@ -187,19 +237,27 @@ fn old_server_keeps_title_emoji_without_process_checks() {
 }
 
 #[test]
-fn neovim_icon_requires_one_pane_and_the_current_server() {
+fn neovim_icon_follows_the_focused_pane_and_current_server() {
     let mut projected = snapshot();
     projected.workspaces[0].label = "🫡 Shipmate".into();
     let mut second_pane = projected.panes[0].clone();
     second_pane.pane_id = "pane_2".into();
+    second_pane.focused = false;
     projected.panes.push(second_pane);
     let mut state = ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
     state.sidebar_collapsed = true;
     state.set_snapshot(Box::new(projected));
     state.set_pane_surface(surface());
-    assert!(state
-        .tick_workspace_editors(std::time::Instant::now())
-        .is_empty());
+    let [ClientShellAction::Endpoint { request, .. }] =
+        &state.tick_workspace_editors(std::time::Instant::now())[..]
+    else {
+        panic!("expected focused pane process check");
+    };
+    assert!(matches!(
+        &request.method,
+        crate::api::schema::Method::PaneProcessInfo(params)
+            if params.pane_id.as_deref() == Some("pane_1")
+    ));
     let mut check = std::collections::HashMap::new();
     check.insert(
         "ws_1".into(),
@@ -214,9 +272,16 @@ fn neovim_icon_requires_one_pane_and_the_current_server() {
     let frame = state.compose(100, 28).expect("workspace with two panes");
     let rect = state.hits.workspaces[0].rect;
     let buffer = frame.to_ratatui_buffer().expect("frame buffer");
-    assert_eq!(buffer[(rect.x + 1, rect.y)].symbol(), "🫡");
+    assert_eq!(buffer[(rect.right() - 1, rect.y)].symbol(), "");
 
     let mut updated = state.snapshot.as_deref().expect("snapshot").clone();
+    updated.panes[0].focused = false;
+    updated.panes[1].focused = true;
+    state.set_snapshot(Box::new(updated.clone()));
+    let frame = state.compose(100, 28).expect("other focused pane");
+    let buffer = frame.to_ratatui_buffer().expect("frame buffer");
+    assert_eq!(buffer[(rect.x + 1, rect.y)].symbol(), "🫡");
+
     updated.panes.pop();
     updated.boot_id = "boot-2".into();
     state.set_snapshot(Box::new(updated));
@@ -241,7 +306,7 @@ fn collapsed_local_workspace_shows_title_emoji() {
     let rect = state.hits.workspaces[0].rect;
     let buffer = frame.to_ratatui_buffer().expect("frame buffer");
     assert_eq!(buffer[(rect.x, rect.y)].symbol(), "1");
-    assert_eq!(buffer[(rect.x + 1, rect.y)].symbol(), "⚓");
+    assert_eq!(buffer[(rect.right() - 2, rect.y)].symbol(), "⚓");
 }
 
 #[test]
@@ -350,6 +415,33 @@ fn workspace_rect(state: &ClientShellState, endpoint: &ClientEndpointId, workspa
 }
 
 #[test]
+fn focused_compact_workspace_has_a_distinct_background() {
+    for palette in [Palette::catppuccin(), Palette::catppuccin_latte()] {
+        for multiple_endpoints in [false, true] {
+            let mut state = if multiple_endpoints {
+                navigation_state(workspaces(2)).0
+            } else {
+                let mut state =
+                    ClientShellState::new(ClientShellConfig::from_config(&Config::default()));
+                state.set_snapshot(Box::new(workspaces(2)));
+                state
+            };
+            state.config.palette = palette.clone();
+            state.sidebar_collapsed = true;
+            state.set_pane_surface(surface());
+            let buffer = state.compose(100, 28).unwrap().to_ratatui_buffer().unwrap();
+            let focused = workspace_rect(&state, &ClientEndpointId::Local, "ws_1");
+            let other = workspace_rect(&state, &ClientEndpointId::Local, "ws_2");
+            assert_eq!(buffer[(focused.x, focused.y)].bg, palette.selection_bg);
+            assert_ne!(
+                buffer[(focused.x, focused.y)].bg,
+                buffer[(other.x, other.y)].bg
+            );
+        }
+    }
+}
+
+#[test]
 fn local_navigation_highlight_stays_visible_with_terminal_theme() {
     use ratatui::style::Color;
 
@@ -413,7 +505,11 @@ fn local_navigation_highlight_stays_visible_with_terminal_theme() {
             let focused = workspace_rect(&state, &ClientEndpointId::Local, "ws_1");
             assert_eq!(
                 buffer[(focused.x, focused.y)].bg,
-                state.config.palette.active_row_bg
+                if compact && selection_bg != Color::Reset {
+                    selection_bg
+                } else {
+                    state.config.palette.active_row_bg
+                }
             );
             let cancelled = workspace_rect(&state, &ClientEndpointId::Local, "ws_3");
             assert_eq!(

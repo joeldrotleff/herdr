@@ -2493,12 +2493,54 @@ fn collapsed_workspaces_show_title_emoji_on_local_and_remote_machines() {
             frame_rows(&frame)
         );
         assert_eq!(
-            buffer[(rect.x + 1, rect.y)].symbol(),
+            buffer[(rect.right() - 2, rect.y)].symbol(),
             expected,
             "{rect:?}: {:?}",
             frame_rows(&frame)
         );
     }
+}
+
+#[test]
+fn collapsed_remote_workspace_without_emoji_shows_fallback_icon() {
+    let (mut state, endpoint_id) = state_with_remote();
+    state.sidebar_collapsed = true;
+    let frame = state.compose(100, 28).expect("collapsed aggregate sidebar");
+    let buffer = frame.to_ratatui_buffer().expect("frame buffer");
+    let rect = state
+        .hits
+        .workspaces
+        .iter()
+        .find(|hit| hit.endpoint_id == endpoint_id)
+        .expect("remote workspace hit")
+        .rect;
+    assert_eq!(buffer[(rect.right() - 1, rect.y)].symbol(), ">");
+}
+
+#[test]
+fn collapsed_remote_neovim_icon_is_right_aligned() {
+    let (mut state, endpoint_id) = state_with_remote();
+    state.sidebar_collapsed = true;
+    state.editor_source = Some((endpoint_id.clone(), "remote-boot".into()));
+    state.editor_checks.insert(
+        "ws_1".into(),
+        WorkspaceEditorCheck {
+            pane_id: "pane_1".into(),
+            checked_at: std::time::Instant::now(),
+            is_neovim: true,
+        },
+    );
+
+    let frame = state.compose(100, 28).expect("collapsed aggregate sidebar");
+    let buffer = frame.to_ratatui_buffer().expect("frame buffer");
+    let rect = state
+        .hits
+        .workspaces
+        .iter()
+        .find(|hit| hit.endpoint_id == endpoint_id)
+        .expect("remote workspace hit")
+        .rect;
+    assert_eq!(buffer[(rect.right() - 1, rect.y)].symbol(), "");
 }
 
 #[test]
@@ -2546,7 +2588,7 @@ fn collapsed_remote_workspace_emoji_follows_its_attention_state() {
 }
 
 #[test]
-fn collapsed_aggregate_workspace_status_uses_its_status_color() {
+fn collapsed_aggregate_fallback_icon_follows_attention_color() {
     use crate::api::schema::AgentStatus;
 
     let (mut state, endpoint_id) = state_with_remote();
@@ -2571,9 +2613,10 @@ fn collapsed_aggregate_workspace_status_uses_its_status_color() {
         .expect("remote workspace")
         .rect;
     let buffer = frame.to_ratatui_buffer().expect("frame buffer");
+    assert_eq!(buffer[(workspace.right() - 1, workspace.y)].symbol(), ">");
     assert_eq!(
-        buffer[(workspace.x.saturating_add(2), workspace.y)].fg,
-        state.config.palette.red
+        buffer[(workspace.right() - 1, workspace.y)].fg,
+        state.config.palette.text
     );
 }
 

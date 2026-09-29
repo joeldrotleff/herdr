@@ -25,6 +25,17 @@ fn workspace_selection_background(palette: &Palette) -> ratatui::style::Color {
     }
 }
 
+pub(in crate::client::shell) fn compact_workspace_active_background(
+    palette: &Palette,
+    navigating: bool,
+) -> ratatui::style::Color {
+    if navigating {
+        workspace_active_background(palette, true)
+    } else {
+        workspace_selection_background(palette)
+    }
+}
+
 pub(in crate::client::shell) fn workspace_active_background(
     palette: &Palette,
     navigating: bool,
@@ -69,7 +80,8 @@ pub(crate) fn render_collapsed_sidebar(
 ) {
     let palette = &config.palette;
     let selection_background = workspace_selection_background(palette);
-    let active_background = workspace_active_background(palette, selected_workspace_id.is_some());
+    let active_background =
+        compact_workspace_active_background(palette, selected_workspace_id.is_some());
     render_sidebar_background(buffer, area, palette);
     let (workspace_area, divider_y, detail_area) = collapsed_sidebar_sections(area);
     for (index, workspace) in snapshot
@@ -99,47 +111,32 @@ pub(crate) fn render_collapsed_sidebar(
         } else {
             Style::default().fg(palette.overlay0)
         };
-        if let Some(emoji) = super::super::workspace_icons::workspace_icon(
+        let icon = super::super::workspace_icons::workspace_icon(
             workspace,
             snapshot,
             &ClientEndpointId::Local,
             editor_source,
             editor_checks,
-        ) {
-            // Pack the number and icon together so "1🫡" fits the 3-column row.
-            let number = (index + 1).to_string();
-            put_text(buffer, rect.x, rect.y, rect.width, &number, number_style);
-            let number_width = super::display_width(&number);
-            put_text(
-                buffer,
-                rect.x.saturating_add(number_width),
-                rect.y,
-                rect.width.saturating_sub(number_width),
-                emoji,
-                Style::default().fg(super::super::workspace_icons::workspace_icon_color(
-                    workspace.agent_status,
-                    palette,
-                )),
-            );
-        } else {
-            put_text(
-                buffer,
-                rect.x,
-                rect.y,
-                rect.width.min(2),
-                &format!("{:<2}", index + 1),
-                number_style,
-            );
-            let status = workspace.agent_status;
-            put_text(
-                buffer,
-                rect.x.saturating_add(2),
-                rect.y,
-                rect.width.saturating_sub(2),
-                status_icon(status, config.status_indicators),
-                Style::default().fg(status_color(status, palette)),
-            );
-        }
+        )
+        .unwrap_or(">");
+        let number = (index + 1).to_string();
+        put_text(buffer, rect.x, rect.y, rect.width, &number, number_style);
+        let number_width = super::display_width(&number);
+        let icon_x = rect
+            .right()
+            .saturating_sub(super::display_width(icon))
+            .max(rect.x.saturating_add(number_width));
+        put_text(
+            buffer,
+            icon_x,
+            rect.y,
+            rect.right().saturating_sub(icon_x),
+            icon,
+            Style::default().fg(super::super::workspace_icons::workspace_icon_color(
+                workspace.agent_status,
+                palette,
+            )),
+        );
         hits.workspaces.push(WorkspaceHit {
             rect,
             endpoint_id: ClientEndpointId::Local,
